@@ -1,0 +1,4 @@
+{
+  "players": ["human", "greedy", "random", "greedy"],
+  "visualize": true
+}
