@@ -1,158 +1,234 @@
+% ============================================================================
+% AZUL GAME RULES - PROLOG IMPLEMENTATION
+% ============================================================================
+% This file defines the core game logic for Azul that can be queried from Python
 
-% azul.pl - Prolog rules for Azul-lite wall pattern, legality, and scoring.
-% Tested with SWI-Prolog. Intended to be used via PySWIP.
-% ------------------------------------------------------
+% Tile colors
+tile_color(blue).
+tile_color(yellow).
+tile_color(red).
+tile_color(black).
+tile_color(white).
 
-% ----- Colors -----
-color(blue).
-color(yellow).
-color(red).
-color(black).
-color(white).
+% ============================================================================
+% WALL PATTERN DEFINITIONS
+% ============================================================================
 
-% ----- Row capacities -----
-row_capacity(1,1).
-row_capacity(2,2).
-row_capacity(3,3).
-row_capacity(4,4).
-row_capacity(5,5).
+% Standard colored wall pattern (row, col, color)
+% Row 0
+wall_pattern(0, 0, blue).
+wall_pattern(0, 1, yellow).
+wall_pattern(0, 2, red).
+wall_pattern(0, 3, black).
+wall_pattern(0, 4, white).
 
-% ----- Wall pattern facts (Row, Col, Color)
-% Standard Azul pattern: each row is a rotation of [blue, yellow, red, black, white]
-% Row 1 (no rotation)
-wall_pattern(1,1,blue).
-wall_pattern(1,2,yellow).
-wall_pattern(1,3,red).
-wall_pattern(1,4,black).
-wall_pattern(1,5,white).
+% Row 1
+wall_pattern(1, 0, white).
+wall_pattern(1, 1, blue).
+wall_pattern(1, 2, yellow).
+wall_pattern(1, 3, red).
+wall_pattern(1, 4, black).
 
-% Row 2 (rotate left by 1)
-wall_pattern(2,1,yellow).
-wall_pattern(2,2,red).
-wall_pattern(2,3,black).
-wall_pattern(2,4,white).
-wall_pattern(2,5,blue).
+% Row 2
+wall_pattern(2, 0, black).
+wall_pattern(2, 1, white).
+wall_pattern(2, 2, blue).
+wall_pattern(2, 3, yellow).
+wall_pattern(2, 4, red).
 
-% Row 3 (rotate left by 2)
-wall_pattern(3,1,red).
-wall_pattern(3,2,black).
-wall_pattern(3,3,white).
-wall_pattern(3,4,blue).
-wall_pattern(3,5,yellow).
+% Row 3
+wall_pattern(3, 0, red).
+wall_pattern(3, 1, black).
+wall_pattern(3, 2, white).
+wall_pattern(3, 3, blue).
+wall_pattern(3, 4, yellow).
 
-% Row 4 (rotate left by 3)
-wall_pattern(4,1,black).
-wall_pattern(4,2,white).
-wall_pattern(4,3,blue).
-wall_pattern(4,4,yellow).
-wall_pattern(4,5,red).
+% Row 4
+wall_pattern(4, 0, yellow).
+wall_pattern(4, 1, red).
+wall_pattern(4, 2, black).
+wall_pattern(4, 3, white).
+wall_pattern(4, 4, blue).
 
-% Row 5 (rotate left by 4)
-wall_pattern(5,1,white).
-wall_pattern(5,2,blue).
-wall_pattern(5,3,yellow).
-wall_pattern(5,4,red).
-wall_pattern(5,5,black).
+% Get column for a color in a specific row
+get_wall_column(Row, Color, Col) :-
+    wall_pattern(Row, Col, Color).
 
-% Find column for a given row and color
-wall_column_for(Row, Color, Col) :-
-    between(1,5,Col),
-    wall_pattern(Row, Col, Color), !.
+% ============================================================================
+% MOVE VALIDATION
+% ============================================================================
 
-% ----- Grid helpers -----
-% Grid is a list of 5 rows, each row a list of 5 cells (0 or 1).
-% cell(Grid, Row, Col, Val) gets the 0/1 at position
-cell(Grid, Row, Col, Val) :-
-    nth1(Row, Grid, R),
-    nth1(Col, R, Val).
+% Check if a color can be placed in a pattern line
+% can_place_in_pattern_line(Row, Color, PatternLines, Wall)
+can_place_in_pattern_line(Row, Color, PatternLines, Wall) :-
+    % Check pattern line doesn't have a different color
+    nth0(Row, PatternLines, CurrentLine),
+    (   all_none(CurrentLine)
+    ;   has_color(CurrentLine, Color)
+    ),
+    % Check wall doesn't already have this color in the row
+    get_wall_column(Row, Color, Col),
+    nth0(Row, Wall, WallRow),
+    nth0(Col, WallRow, false).
 
-% Check if the target cell is empty (0)
-empty_cell(Grid, Row, Col) :-
-    cell(Grid, Row, Col, V),
-    V =:= 0.
+% Helper: check if all elements are none/null
+all_none([]).
+all_none([none|T]) :- all_none(T).
 
-% ----- Legality -----
-% legal_placement(Row, Color, Grid) is true if placing tile of Color in Row is allowed wrt wall:
-%  - Color must not already be placed in that Row (i.e., the target column must be empty).
-%  - No other same color in that row (implicit by the pattern: exactly one column matches Color).
-legal_placement(Row, Color, Grid) :-
-    between(1,5,Row),
-    color(Color),
-    wall_column_for(Row, Color, Col),
-    empty_cell(Grid, Row, Col).
+% Helper: check if list has specific color
+has_color([Color|_], Color) :- !.
+has_color([none|T], Color) :- has_color(T, Color).
 
-% ----- Scoring calculation after placing a tile at (Row, Col) -----
-% Count contiguous tiles horizontally including this cell
-h_run_len(Grid, Row, Col, Len) :-
-    h_left(Grid, Row, Col, L),
-    h_right(Grid, Row, Col, R),
-    Len is L + R + 1.
+% Check if pattern line is complete
+pattern_line_complete(Row, PatternLines) :-
+    nth0(Row, PatternLines, Line),
+    LineSize is Row + 1,
+    length(Line, LineSize),
+    \+ member(none, Line).
 
-% Count to the left
-h_left(Grid, Row, Col, Count) :-
-    Col > 1,
-    C1 is Col - 1,
-    cell(Grid, Row, C1, V),
-    ( V =:= 1 -> h_left(Grid, Row, C1, K), Count is K + 1
-    ; Count = 0 ).
-h_left(_, _, Col, 0) :- Col =< 1.
+% ============================================================================
+% MOVE GENERATION
+% ============================================================================
 
-% Count to the right
-h_right(Grid, Row, Col, Count) :-
-    Col < 5,
-    C1 is Col + 1,
-    cell(Grid, Row, C1, V),
-    ( V =:= 1 -> h_right(Grid, Row, C1, K), Count is K + 1
-    ; Count = 0 ).
-h_right(_, _, Col, 0) :- Col >= 5.
+% Generate all legal moves for a player
+% legal_move(Source, Color, DestRow, Factories, Center, PatternLines, Wall)
+legal_move(factory(FactoryIdx), Color, DestRow, Factories, _, PatternLines, Wall) :-
+    % Get tiles from factory
+    nth0(FactoryIdx, Factories, Factory),
+    member(Color, Factory),
+    % Check destination
+    valid_destination(DestRow, Color, PatternLines, Wall).
 
-% Vertical run length
-v_run_len(Grid, Row, Col, Len) :-
-    v_up(Grid, Row, Col, U),
-    v_down(Grid, Row, Col, D),
-    Len is U + D + 1.
+legal_move(center, Color, DestRow, _, Center, PatternLines, Wall) :-
+    % Get tiles from center
+    member(Color, Center),
+    % Check destination
+    valid_destination(DestRow, Color, PatternLines, Wall).
 
-v_up(Grid, Row, Col, Count) :-
-    Row > 1,
-    R1 is Row - 1,
-    cell(Grid, R1, Col, V),
-    ( V =:= 1 -> v_up(Grid, R1, Col, K), Count is K + 1
-    ; Count = 0 ).
-v_up(_, Row, _, 0) :- Row =< 1.
+% Valid destination is either floor line or a valid pattern line
+valid_destination(floor, _, _, _).
+valid_destination(Row, Color, PatternLines, Wall) :-
+    between(0, 4, Row),
+    can_place_in_pattern_line(Row, Color, PatternLines, Wall).
 
-v_down(Grid, Row, Col, Count) :-
-    Row < 5,
-    R1 is Row + 1,
-    cell(Grid, R1, Col, V),
-    ( V =:= 1 -> v_down(Grid, R1, Col, K), Count is K + 1
-    ; Count = 0 ).
-v_down(_, Row, _, 0) :- Row >= 5.
+% ============================================================================
+% SCORING CALCULATIONS
+% ============================================================================
 
-% score_for_placement(GridBefore, Row, Color, Score)
-% Note: You must ensure the cell at (Row, Col) is empty before placement;
-% scoring counts neighbors that are already placed.
-score_for_placement(Grid, Row, Color, Score) :-
-    wall_column_for(Row, Color, Col),
-    % Compute lengths if we set this tile; neighbors are already on the grid
-    h_run_len(Grid, Row, Col, HLen),
-    v_run_len(Grid, Row, Col, VLen),
-    ( HLen =:= 1, VLen =:= 1 -> Score = 1
-    ; Score is (HLen > 1 -> HLen ; 0) + (VLen > 1 -> VLen ; 0)
+% Calculate score for placing a tile at (Row, Col) on the wall
+calculate_tile_score(Row, Col, Wall, Score) :-
+    % Calculate horizontal score
+    count_horizontal(Row, Col, Wall, HScore),
+    % Calculate vertical score
+    count_vertical(Row, Col, Wall, VScore),
+    % Combine scores
+    combine_scores(HScore, VScore, Score).
+
+% Count horizontally connected tiles
+count_horizontal(Row, Col, Wall, Score) :-
+    nth0(Row, Wall, WallRow),
+    count_left(Col, WallRow, LeftCount),
+    count_right(Col, WallRow, RightCount),
+    Score is LeftCount + RightCount + 1.
+
+% Count tiles to the left
+count_left(0, _, 0) :- !.
+count_left(Col, Row, Count) :-
+    PrevCol is Col - 1,
+    nth0(PrevCol, Row, true),
+    !,
+    count_left(PrevCol, Row, PrevCount),
+    Count is PrevCount + 1.
+count_left(_, _, 0).
+
+% Count tiles to the right
+count_right(Col, Row, Count) :-
+    length(Row, Len),
+    NextCol is Col + 1,
+    NextCol < Len,
+    nth0(NextCol, Row, true),
+    !,
+    count_right(NextCol, Row, PrevCount),
+    Count is PrevCount + 1.
+count_right(_, _, 0).
+
+% Count vertically connected tiles
+count_vertical(Row, Col, Wall, Score) :-
+    count_up(Row, Col, Wall, UpCount),
+    count_down(Row, Col, Wall, DownCount),
+    Score is UpCount + DownCount + 1.
+
+% Count tiles above
+count_up(0, _, _, 0) :- !.
+count_up(Row, Col, Wall, Count) :-
+    PrevRow is Row - 1,
+    nth0(PrevRow, Wall, WallRow),
+    nth0(Col, WallRow, true),
+    !,
+    count_up(PrevRow, Col, Wall, PrevCount),
+    Count is PrevCount + 1.
+count_up(_, _, _, 0).
+
+% Count tiles below
+count_down(Row, Col, Wall, Count) :-
+    length(Wall, Len),
+    NextRow is Row + 1,
+    NextRow < Len,
+    nth0(NextRow, Wall, WallRow),
+    nth0(Col, WallRow, true),
+    !,
+    count_down(NextRow, Col, Wall, PrevCount),
+    Count is PrevCount + 1.
+count_down(_, _, _, 0).
+
+% Combine horizontal and vertical scores
+combine_scores(1, 1, 1) :- !.  % No adjacent tiles
+combine_scores(H, 1, H) :- H > 1, !.  % Only horizontal
+combine_scores(1, V, V) :- V > 1, !.  % Only vertical
+combine_scores(H, V, Score) :- H > 1, V > 1, Score is H + V.  % Both directions
+
+% ============================================================================
+% END GAME SCORING
+% ============================================================================
+
+% Count complete horizontal lines
+count_horizontal_lines([], 0).
+count_horizontal_lines([Row|Rest], Count) :-
+    (   all_true(Row)
+    ->  count_horizontal_lines(Rest, RestCount),
+        Count is RestCount + 1
+    ;   count_horizontal_lines(Rest, Count)
     ).
 
-% ----- Bonuses at end of game (optional, exposed for completeness) -----
-% complete_row(Grid, Row): true if row has all 1s
-complete_row(Grid, Row) :-
-    nth1(Row, Grid, R),
-    forall(member(X, R), X =:= 1).
+% Count complete vertical lines
+count_vertical_lines(Wall, Count) :-
+    length(Wall, Len),
+    count_vertical_lines_helper(0, Len, Wall, Count).
 
-% complete_col(Grid, Col): true if column has all 1s
-complete_col(Grid, Col) :-
-    findall(V, (between(1,5,R), cell(Grid,R,Col,V)), Vs),
-    forall(member(X, Vs), X =:= 1).
+count_vertical_lines_helper(Col, Max, _, 0) :- Col >= Max, !.
+count_vertical_lines_helper(Col, Max, Wall, Count) :-
+    (   column_complete(Col, Wall)
+    ->  NextCol is Col + 1,
+        count_vertical_lines_helper(NextCol, Max, Wall, RestCount),
+        Count is RestCount + 1
+    ;   NextCol is Col + 1,
+        count_vertical_lines_helper(NextCol, Max, Wall, Count)
+    ).
 
-% color_complete(Grid, Color): true if color appears exactly once in each row (i.e., 5 tiles placed)
-color_complete(Grid, Color) :-
-    findall((R,C), (between(1,5,R), wall_column_for(R, Color, C), cell(Grid,R,C,V), V =:= 1), Positions),
+% Check if a column is complete
+column_complete(Col, Wall) :-
+    forall(nth0(_, Wall, Row), (nth0(Col, Row, true))).
+
+% Count complete colors (all 5 tiles of one color placed)
+count_complete_colors(Wall, Count) :-
+    findall(Color, (tile_color(Color), color_complete(Color, Wall)), Colors),
+    length(Colors, Count).
+
+color_complete(Color, Wall) :-
+    findall(1, (
+        between(0, 4, Row),
+        get_wall_column(Row, Color, Col),
+        nth0(Row, Wall, WallRow),
+        nth0(Col, WallRow, true)
+    ), Positions),
     length(Positions, 5).
-
